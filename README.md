@@ -1,6 +1,78 @@
-# Traffy Prediction API
+# Traffy Fondue Duration Prediction API
 
-FastAPI microservice for predicting resolution time for Traffy Fondue complaints using a BERT-based regression model.
+FastAPI microservice for predicting resolution time for Traffy Fondue complaints using a BERT-based regression model (WangchanBERTa).
+
+## Features
+
+- 🚀 FastAPI-based REST API
+- 🤖 Thai language BERT model (WangchanBERTa)
+- 📊 Predicts complaint resolution time in days
+- 🔄 Single and batch prediction endpoints
+- 📝 Complete API documentation
+- 🐳 Docker support
+- 📦 Git LFS for large model files
+
+## Prerequisites
+
+Before cloning this repository, install **Git LFS** to handle large model files (1.1GB):
+
+### Install Git LFS
+
+**Windows:**
+```bash
+# Download from https://git-lfs.github.com/
+# Or using Chocolatey:
+choco install git-lfs
+```
+
+**macOS:**
+```bash
+brew install git-lfs
+```
+
+**Linux:**
+```bash
+sudo apt-get install git-lfs
+# or
+sudo yum install git-lfs
+```
+
+**Initialize Git LFS:**
+```bash
+git lfs install
+```
+
+## Installation
+
+### 1. Clone Repository
+
+```bash
+git clone <repository-url>
+cd project_model
+
+# Git LFS will automatically download large files
+# If not, run:
+git lfs pull
+```
+
+### 2. Create Virtual Environment
+
+```bash
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+
+# macOS/Linux:
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Model Architecture
 
@@ -13,26 +85,27 @@ The model uses **WangchanBERTa** (Thai BERT) combined with 5 numeric features:
 
 ## Quick Start
 
-### 1. Test the Model Locally
+### Run FastAPI Server
+
+```bash
+python app.py
+```
+
+The API will be available at `http://localhost:8000`
+
+**Access Documentation:**
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- Full API Docs: See [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+
+### Test the Model Locally
 
 ```bash
 cd traffy_predict
 python use.py
 ```
 
-### 2. Run FastAPI Server
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run server
-python app.py
-```
-
-The API will be available at `http://localhost:8000`
-
-### 3. Run with Docker
+### Run with Docker
 
 ```bash
 # Build image
@@ -42,126 +115,67 @@ docker build -t traffy-api .
 docker run -p 8000:8000 traffy-api
 ```
 
-## API Documentation
-
-Once running, visit:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
 ## API Endpoints
 
-### Health Check
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | API information |
+| `/health` | GET | Health check |
+| `/predict` | POST | Single complaint prediction |
+| `/batch_predict` | POST | Batch predictions |
+
+### Example: Single Prediction
 
 ```bash
-GET /
-GET /health
-```
-
-### Single Prediction
-
-```bash
-POST /predict
-```
-
-**Request Body:**
-```json
-{
-  "text": "ถนนมีหลุมบ่อมาก ต้องการซ่อมแซม",
-  "is_type": 1.0,
-  "comment_len": 50.0,
-  "is_weekend": 0.0,
-  "working_hr": 1.0,
-  "month": 5.0
-}
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "comment": "หมาจรในซอยเฉลิมพระเกียรติร.9 42 นี้ดุ วิ่งไล่กัดคนเดินผ่าน",
+    "type": "{ร้องเรียน,สัตว์จรจัด}",
+    "organization": "เขตประเวศ",
+    "district": "ประเวศ",
+    "subdistrict": "หนองบอน",
+    "timestamp": "2025-01-15T11:27:20+00:00"
+  }'
 ```
 
 **Response:**
 ```json
 {
-  "prediction": 123.45,
-  "input_text": "ถนนมีหลุมบ่อมาก ต้องการซ่อมแซม"
-}
-```
-
-### Batch Prediction
-
-```bash
-POST /batch_predict
-```
-
-**Request Body:**
-```json
-[
-  {
-    "text": "ถนนมีหลุมบ่อมาก",
+  "predicted_days": 1.50,
+  "predicted_hours": 36.0,
+  "comment": "หมาจรในซอยเฉลิมพระเกียรติร.9 42 นี้ดุ วิ่งไล่กัดคนเดินผ่าน",
+  "features": {
     "is_type": 1.0,
-    "comment_len": 30.0,
+    "comment_length": 62,
     "is_weekend": 0.0,
-    "working_hr": 1.0,
-    "month": 5.0
-  },
-  {
-    "text": "ขอแจ้งเรื่องไฟฟ้าขัดข้อง",
-    "is_type": 2.0,
-    "comment_len": 40.0,
-    "is_weekend": 1.0,
-    "working_hr": 0.0,
-    "month": 6.0
+    "working_hours": 1.0,
+    "month": 1,
+    "timestamp": "2025-01-15 11:27:20+00:00"
   }
-]
-```
-
-## Example Usage with cURL
-
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Make prediction
-curl -X POST "http://localhost:8000/predict" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "ถนนมีหลุมบ่อมาก ต้องการซ่อมแซม",
-    "is_type": 1.0,
-    "comment_len": 50.0,
-    "is_weekend": 0.0,
-    "working_hr": 1.0,
-    "month": 5.0
-  }'
-```
-
-## Example Usage with Python
-
-```python
-import requests
-
-url = "http://localhost:8000/predict"
-payload = {
-    "text": "ถนนมีหลุมบ่อมาก ต้องการซ่อมแซม",
-    "is_type": 1.0,
-    "comment_len": 50.0,
-    "is_weekend": 0.0,
-    "working_hr": 1.0,
-    "month": 5.0
 }
-
-response = requests.post(url, json=payload)
-print(response.json())
 ```
+
+For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
 ## Project Structure
 
 ```
 project_model/
-├── app.py                      # FastAPI application
-├── requirements.txt            # Python dependencies
-├── Dockerfile                  # Docker configuration
-├── README.md                   # This file
+├── app.py                          # FastAPI application
+├── requirements.txt                # Python dependencies
+├── API_DOCUMENTATION.md            # Complete API documentation
+├── README.md                       # This file
+├── Dockerfile                      # Docker configuration
+├── example_simple.py               # Simple usage example
+├── .gitignore                      # Git ignore rules
+├── .gitattributes                  # Git LFS configuration
 └── traffy_predict/
-    ├── model.py               # Model architecture
-    ├── use.py                 # Standalone usage example
-    ├── best_bert_regressor.pt # Trained model weights
-    └── tokenizer/             # WangchanBERTa tokenizer
+    ├── model.py                   # Model architecture
+    ├── use.py                     # Standalone prediction script
+    ├── best_bert_regressor.pt     # Trained model weights (Git LFS)
+    ├── model.pt                   # Alternative model weights (Git LFS)
+    └── tokenizer/                 # WangchanBERTa tokenizer files
 ```
 
 ## Development
