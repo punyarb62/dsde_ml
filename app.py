@@ -6,6 +6,7 @@ from traffy_predict.model import TraffyBertRegressor
 import logging
 from typing import Optional
 from datetime import datetime
+import cache
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -142,8 +143,9 @@ def predict_duration(text, is_type, comment_length, is_weekend, working_hours, m
 
 @app.on_event("startup")
 async def startup_event():
-    """Load model on startup"""
+    """Load model and initialize cache on startup"""
     load_model_on_startup()
+    cache.init_redis()
 
 @app.get("/")
 async def root():
@@ -170,7 +172,8 @@ async def health_check():
         "status": "healthy",
         "model_loaded": True,
         "tokenizer_loaded": True,
-        "device": str(DEVICE)
+        "device": str(DEVICE),
+        "cache": cache.get_cache_stats()
     }
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -184,6 +187,14 @@ async def predict(request: PredictionRequest):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
+        # Generate cache key
+        cache_key = cache.generate_cache_key(request.model_dump())
+
+        # Check cache first
+        cached_result = cache.get_cached_prediction(cache_key)
+        if cached_result:
+            return PredictionResponse(**cached_result)
+
         # Extract features
         features = extract_features(
             comment=request.comment,
@@ -210,12 +221,18 @@ async def predict(request: PredictionRequest):
             month=features["month"]
         )
 
-        return PredictionResponse(
-            predicted_days=round(pred_days, 2),
-            predicted_hours=round(pred_days * 24, 1),
-            comment=request.comment,
-            features=features
-        )
+        # Prepare response
+        result = {
+            "predicted_days": round(pred_days, 2),
+            "predicted_hours": round(pred_days * 24, 1),
+            "comment": request.comment,
+            "features": features
+        }
+
+        # Cache the result
+        cache.set_cached_prediction(cache_key, result)
+
+        return PredictionResponse(**result)
 
     except Exception as e:
         logger.error(f"Error during prediction: {str(e)}")
@@ -235,6 +252,15 @@ async def batch_predict(requests: list[PredictionRequest]):
 
     for req in requests:
         try:
+            # Generate cache key
+            cache_key = cache.generate_cache_key(req.model_dump())
+
+            # Check cache first
+            cached_result = cache.get_cached_prediction(cache_key)
+            if cached_result:
+                results.append(cached_result)
+                continue
+
             # Extract features
             features = extract_features(
                 comment=req.comment,
@@ -261,12 +287,17 @@ async def batch_predict(requests: list[PredictionRequest]):
                 month=features["month"]
             )
 
-            results.append({
+            result = {
                 "predicted_days": round(pred_days, 2),
                 "predicted_hours": round(pred_days * 24, 1),
                 "comment": req.comment,
                 "features": features
-            })
+            }
+
+            # Cache the result
+            cache.set_cached_prediction(cache_key, result)
+
+            results.append(result)
 
         except Exception as e:
             logger.error(f"Error during batch prediction: {str(e)}")

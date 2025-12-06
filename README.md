@@ -8,6 +8,7 @@ FastAPI microservice for predicting resolution time for Traffy Fondue complaints
 - 🤖 Thai language BERT model (WangchanBERTa)
 - 📊 Predicts complaint resolution time in days
 - 🔄 Single and batch prediction endpoints
+- ⚡ Redis caching for faster repeated predictions
 - 📝 Complete API documentation
 - 🐳 Docker support
 - 📦 Git LFS for large model files
@@ -74,6 +75,18 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 4. Optional: Start Redis with Docker Compose (for caching)
+
+**Why Redis?** Enables automatic caching of predictions for faster repeated queries.
+
+```bash
+docker-compose up -d
+```
+
+This starts Redis in the background. The API will automatically connect to it.
+
+**Alternative:** Install Redis locally (see docs) or skip Redis entirely - the API works without it.
+
 ## Model Architecture
 
 The model uses **WangchanBERTa** (Thai BERT) combined with 5 numeric features:
@@ -85,7 +98,13 @@ The model uses **WangchanBERTa** (Thai BERT) combined with 5 numeric features:
 
 ## Quick Start
 
-### Run FastAPI Server
+### 1. Start Redis (Optional but Recommended)
+
+```bash
+docker-compose up -d
+```
+
+### 2. Run FastAPI Server
 
 ```bash
 python app.py
@@ -98,21 +117,17 @@ The API will be available at `http://localhost:8000`
 - ReDoc: http://localhost:8000/redoc
 - Full API Docs: See [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
+### 3. Stop Redis When Done
+
+```bash
+docker-compose down
+```
+
 ### Test the Model Locally
 
 ```bash
 cd traffy_predict
 python use.py
-```
-
-### Run with Docker
-
-```bash
-# Build image
-docker build -t traffy-api .
-
-# Run container
-docker run -p 8000:8000 traffy-api
 ```
 
 ## API Endpoints
@@ -158,15 +173,37 @@ curl -X POST "http://localhost:8000/predict" \
 
 For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
+## Performance & Caching
+
+The API includes built-in Redis caching for optimal performance:
+
+- **Cache Strategy:** Identical requests return cached results instantly
+- **Cache Duration:** 20 minutes by default (configurable via `CACHE_TTL`)
+- **Automatic Fallback:** If Redis is unavailable, predictions work normally without caching
+- **Cache Key:** Based on MD5 hash of all input fields (comment, type, organization, district, subdistrict, timestamp)
+
+**Performance Comparison:**
+- Without cache: ~200-500ms per prediction (model inference)
+- With cache hit: ~5-10ms per prediction (Redis lookup)
+
+**Check cache status:**
+```bash
+curl http://localhost:8000/health
+```
+
+The `/health` endpoint shows cache statistics including connection status, TTL, and total cached keys.
+
 ## Project Structure
 
 ```
 project_model/
 ├── app.py                          # FastAPI application
+├── cache.py                        # Redis caching utilities
 ├── requirements.txt                # Python dependencies
+├── docker-compose.yml              # Redis Docker setup
 ├── API_DOCUMENTATION.md            # Complete API documentation
 ├── README.md                       # This file
-├── Dockerfile                      # Docker configuration
+├── Dockerfile                      # Docker configuration (optional)
 ├── example_simple.py               # Simple usage example
 ├── .gitignore                      # Git ignore rules
 ├── .gitattributes                  # Git LFS configuration
@@ -194,9 +231,25 @@ pytest
 
 You can configure the following environment variables:
 
+**Model Configuration:**
 - `MODEL_PATH`: Path to model weights (default: `./traffy_predict/best_bert_regressor.pt`)
 - `TOKENIZER_PATH`: Path to tokenizer (default: `./traffy_predict/tokenizer`)
 - `PORT`: Server port (default: `8000`)
+
+**Redis Cache Configuration (Optional):**
+- `REDIS_HOST`: Redis server host (default: `localhost`)
+- `REDIS_PORT`: Redis server port (default: `6379`)
+- `REDIS_DB`: Redis database number (default: `0`)
+- `REDIS_PASSWORD`: Redis password (default: `None`)
+- `CACHE_TTL`: Cache expiration time in seconds (default: `1200` = 20 minutes)
+
+**Example with custom cache settings:**
+```bash
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export CACHE_TTL=1800  # 30 minutes
+python app.py
+```
 
 ## Requirements
 

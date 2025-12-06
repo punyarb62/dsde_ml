@@ -112,9 +112,21 @@ The API will be available at `http://localhost:8000`.
   "status": "healthy",
   "model_loaded": true,
   "tokenizer_loaded": true,
-  "device": "cpu"
+  "device": "cpu",
+  "cache": {
+    "enabled": true,
+    "connected": true,
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "ttl_seconds": 1200,
+    "total_keys": 0,
+    "used_memory_human": "1.05M"
+  }
 }
 ```
+
+**Note:** If Redis is not available, the `cache` field will show `{"enabled": false, "connected": false}`.
 
 **Response (Error - 503):**
 
@@ -129,6 +141,8 @@ The API will be available at `http://localhost:8000`.
 ### POST `/predict`
 
 **Description:** Predict resolution time for a single complaint
+
+**Caching:** This endpoint automatically caches predictions. Identical requests within the cache TTL (default 20 minutes) return instantly from cache.
 
 #### Request Body
 
@@ -194,6 +208,8 @@ curl -X POST "http://localhost:8000/predict" \
 ### POST `/batch_predict`
 
 **Description:** Predict resolution time for multiple complaints at once
+
+**Caching:** Each complaint in the batch is cached individually. Previously cached complaints return instantly while new ones are computed.
 
 #### Request Body
 
@@ -393,12 +409,31 @@ docker run -p 8000:8000 traffy-api
 
 ### Environment Variables
 
+**Model Configuration:**
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MODEL_PATH` | `./traffy_predict/best_bert_regressor.pt` | Path to model weights |
 | `TOKENIZER_PATH` | `./traffy_predict/tokenizer` | Path to tokenizer |
 | `PORT` | `8000` | Server port |
 | `HOST` | `0.0.0.0` | Server host |
+
+**Redis Cache Configuration (Optional):**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_HOST` | `localhost` | Redis server hostname |
+| `REDIS_PORT` | `6379` | Redis server port |
+| `REDIS_DB` | `0` | Redis database number |
+| `REDIS_PASSWORD` | `None` | Redis password (if required) |
+| `CACHE_TTL` | `1200` | Cache expiration time in seconds (20 minutes) |
+
+**Example:**
+```bash
+export REDIS_HOST=localhost
+export CACHE_TTL=1800  # 30 minutes
+python app.py
+```
 
 ---
 
@@ -417,7 +452,65 @@ For issues or questions:
 
 ---
 
+## Performance & Caching
+
+The API includes **Redis caching** for optimal performance:
+
+### How It Works
+
+1. **Cache Check:** When a prediction request arrives, the system generates a cache key from all input fields
+2. **Cache Hit:** If the exact request was made recently, return cached result instantly (~5-10ms)
+3. **Cache Miss:** If not cached, run model inference (~200-500ms) and cache the result
+4. **Automatic Expiration:** Cache entries expire after TTL (default 20 minutes)
+
+### Cache Key Generation
+
+Cache keys are MD5 hashes of all request fields:
+- `comment`
+- `type`
+- `organization`
+- `district`
+- `subdistrict`
+- `timestamp`
+
+**Important:** Even small changes in input create a different cache key, ensuring accurate predictions.
+
+### Performance Comparison
+
+| Scenario | Response Time | Notes |
+|----------|--------------|-------|
+| Cache Hit | ~5-10ms | Redis lookup only |
+| Cache Miss | ~200-500ms | Full model inference |
+| Without Redis | ~200-500ms | Always runs inference |
+
+### Graceful Degradation
+
+- If Redis is unavailable at startup, the API logs a warning and continues without caching
+- All endpoints work normally, just without performance benefits
+- No code changes required - caching is completely transparent
+
+### Monitoring Cache Performance
+
+Check cache statistics via the `/health` endpoint:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Returns cache metrics including:
+- Connection status
+- Total cached keys
+- Memory usage
+- TTL configuration
+
 ## Changelog
+
+### Version 2.1.0
+- **Added Redis caching** for improved performance on repeated predictions
+- Cache-aside pattern with configurable TTL (default 20 minutes)
+- Graceful fallback when Redis unavailable
+- Cache statistics in `/health` endpoint
+- Updated documentation with cache information
 
 ### Version 2.0.0
 - Complete rewrite based on working `use.py` implementation
